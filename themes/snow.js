@@ -47,7 +47,7 @@ SnowTheme.DEFAULTS = extend(true, {}, BaseTheme.DEFAULTS, {
               preview = 'mailto:' + preview;
             }
             let tooltip = this.quill.theme.tooltip;
-            tooltip.edit('link', preview);
+            tooltip.edit('link', null);
           } else {
             this.quill.format('link', false);
           }
