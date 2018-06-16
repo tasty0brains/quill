@@ -3,7 +3,7 @@ import DeltaOp from 'quill-delta/lib/op';
 import Parchment from 'parchment';
 import CodeBlock from '../formats/code';
 import CursorBlot from '../blots/cursor';
-import Block, { bubbleFormats } from '../blots/block';
+import Block, {bubbleFormats} from '../blots/block';
 import Break from '../blots/break';
 import clone from 'clone';
 import equal from 'deep-equal';
@@ -69,6 +69,56 @@ class Editor {
     return this.update(delta);
   }
 
+  applyDeltaLite(delta) {
+    let consumeNextNewline = false;
+    this.scroll.update();
+    let scrollLength = this.scroll.length();
+    this.scroll.batchStart();
+    // delta = normalizeDelta(delta);
+    delta.reduce((index, op) => {
+      let length = op.retain || op.delete || op.insert.length || 1;
+      let attributes = op.attributes || {};
+      if (op.insert != null) {
+        if (typeof op.insert === 'string') {
+          let text = op.insert;
+          if (text.endsWith('\n') && consumeNextNewline) {
+            consumeNextNewline = false;
+            text = text.slice(0, -1);
+          }
+          if (index >= scrollLength && !text.endsWith('\n')) {
+            consumeNextNewline = true;
+          }
+          this.scroll.insertAt(index, text);
+          let [line, offset] = this.scroll.line(index);
+          let formats = extend({}, bubbleFormats(line));
+          if (line instanceof Block) {
+            let [leaf, ] = line.descendant(Parchment.Leaf, offset);
+            formats = extend(formats, bubbleFormats(leaf));
+          }
+          attributes = DeltaOp.attributes.diff(formats, attributes) || {};
+        } else if (typeof op.insert === 'object') {
+          let key = Object.keys(op.insert)[0];  // There should only be one key
+          if (key == null) return index;
+          this.scroll.insertAt(index, key, op.insert[key]);
+        }
+        scrollLength += length;
+      }
+      Object.keys(attributes).forEach((name) => {
+        this.scroll.formatAt(index, length, name, attributes[name]);
+      });
+      return index + length;
+    }, 0);
+    // delta.reduce((index, op) => {
+    //   if (typeof op.delete === 'number') {
+    //     this.scroll.deleteAt(index, op.delete);
+    //     return index;
+    //   }
+    //   return index + (op.retain || op.insert.length || 1);
+    // }, 0);
+    this.scroll.batchEnd();
+    return this.update(delta);
+  }
+
   deleteText(index, length) {
     this.scroll.deleteAt(index, length);
     return this.update(new Delta().retain(index).delete(length));
@@ -116,7 +166,7 @@ class Editor {
   getFormat(index, length = 0) {
     let lines = [], leaves = [];
     if (length === 0) {
-      this.scroll.path(index).forEach(function(path) {
+      this.scroll.path(index).forEach(function (path) {
         let [blot, ] = path;
         if (blot instanceof Block) {
           lines.push(blot);
@@ -128,7 +178,7 @@ class Editor {
       lines = this.scroll.lines(index, length);
       leaves = this.scroll.descendants(Parchment.Leaf, index, length);
     }
-    let formatsArr = [lines, leaves].map(function(blots) {
+    let formatsArr = [lines, leaves].map(function (blots) {
       if (blots.length === 0) return {};
       let formats = bubbleFormats(blots.shift());
       while (Object.keys(formats).length > 0) {
@@ -142,16 +192,16 @@ class Editor {
   }
 
   getText(index, length) {
-    return this.getContents(index, length).filter(function(op) {
+    return this.getContents(index, length).filter(function (op) {
       return typeof op.insert === 'string';
-    }).map(function(op) {
+    }).map(function (op) {
       return op.insert;
     }).join('');
   }
 
   insertEmbed(index, embed, value) {
     this.scroll.insertAt(index, embed, value);
-    return this.update(new Delta().retain(index).insert({ [embed]: value }));
+    return this.update(new Delta().retain(index).insert({[embed]: value}));
   }
 
   insertText(index, text, formats = {}) {
@@ -193,9 +243,9 @@ class Editor {
   update(change, mutations = [], cursorIndex = undefined) {
     let oldDelta = this.delta;
     if (mutations.length === 1 &&
-        mutations[0].type === 'characterData' &&
-        mutations[0].target.data.match(ASCII) &&
-        Parchment.find(mutations[0].target)) {
+      mutations[0].type === 'characterData' &&
+      mutations[0].target.data.match(ASCII) &&
+      Parchment.find(mutations[0].target)) {
       // Optimization for character changes
       let textBlot = Parchment.find(mutations[0].target);
       let formats = bubbleFormats(textBlot);
@@ -204,7 +254,7 @@ class Editor {
       let oldText = new Delta().insert(oldValue);
       let newText = new Delta().insert(textBlot.value());
       let diffDelta = new Delta().retain(index).concat(oldText.diff(newText, cursorIndex));
-      change = diffDelta.reduce(function(delta, op) {
+      change = diffDelta.reduce(function (delta, op) {
         if (op.insert) {
           return delta.insert(op.insert, formats);
         } else {
@@ -224,7 +274,7 @@ class Editor {
 
 
 function combineFormats(formats, combined) {
-  return Object.keys(combined).reduce(function(merged, name) {
+  return Object.keys(combined).reduce(function (merged, name) {
     if (formats[name] == null) return merged;
     if (combined[name] === formats[name]) {
       merged[name] = combined[name];
@@ -240,11 +290,11 @@ function combineFormats(formats, combined) {
 }
 
 function normalizeDelta(delta) {
-  return delta.reduce(function(delta, op) {
+  return delta.reduce(function (delta, op) {
     if (op.insert === 1) {
       let attributes = clone(op.attributes);
       delete attributes['image'];
-      return delta.insert({ image: op.attributes.image }, attributes);
+      return delta.insert({image: op.attributes.image}, attributes);
     }
     if (op.attributes != null && (op.attributes.list === true || op.attributes.bullet === true)) {
       op = clone(op);
