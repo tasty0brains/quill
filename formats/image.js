@@ -11,11 +11,14 @@ const ATTRIBUTES = [
 
 class Image extends Parchment.Embed {
   static create(value) {
-    let node = super.create(value.src);
-    if (typeof value.src === 'string') {
-      node.setAttribute('src', this.sanitize(value.src));
-      node.setAttribute('data-fid', value['data-fid'])
+    let node = super.create(value);
+    if (typeof value === 'string') {
+       node.setAttribute('src', this.sanitize(value));
+    } else {
+       node.setAttribute('src', this.sanitize(value.src));
+       node.setAttribute('data-fid', value['data-fid'])
     }
+
     return node;
   }
 
